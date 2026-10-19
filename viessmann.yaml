@@ -1,0 +1,312 @@
+# Vitodens 242-F (Vitotronic 200 HO1, device 0x20CB, P300): datapoints and Home Assistant entities.
+#
+# The register table of vitalk2mqtt.js, same order; the comment is its key. Values are little
+# endian; "divisor" scales them, sensors are rounded to accuracy_decimals as vitalk2mqtt did.
+# Names are the Home Assistant names (the unique id comes from the name: rename in HA, not here).
+# Registers commented out in vitalk2mqtt stay commented out here.
+
+# substitutions:  # heating pause after hot water, disabled (see BoilerLoading)
+#   heating_resume_delay: 100s  # vitalk2mqtt: 20 reads of BoilerLoading at 5 s
+
+.celsius: &celsius
+  unit_of_measurement: °C
+  device_class: temperature
+  state_class: measurement
+
+.solar_setting: &solar_setting
+  platform: optolink
+  mode: slider
+
+sensor:
+  - platform: optolink  # OutdoorTemp
+    name: Temperatura esterna
+    address: 0x5525
+    type: s16
+    divisor: 10
+    update_interval: 60s
+    <<: *celsius
+  - platform: optolink  # SolarPanelTemp
+    name: Temperatura pannello solare
+    address: 0x6564
+    type: s16
+    divisor: 10
+    update_interval: 10s
+    <<: *celsius
+  - platform: optolink  # HotWaterTemp
+    name: Temperatura acqua calda
+    address: 0x0804
+    type: u16
+    divisor: 10
+    accuracy_decimals: 1
+    update_interval: 10s
+    <<: *celsius
+  - platform: optolink  # HotWaterOutTemp
+    name: Temp erogazione ACS
+    address: 0x0806
+    type: u16
+    divisor: 10
+    accuracy_decimals: 1
+    update_interval: 10s
+    <<: *celsius
+  - platform: optolink  # BurnerTemp
+    name: Temperatura bruciatore
+    address: 0x0802
+    type: u16
+    divisor: 10
+    update_interval: 5s
+    <<: *celsius
+  - platform: optolink  # HeatingTempTarget
+    name: Target temperatura riscaldamento
+    address: 0x555A
+    type: u16
+    divisor: 10
+    update_interval: 60s
+    <<: *celsius
+  # ExhaustGasTemp: 0x0808 u16 /10, 30s
+  - platform: optolink  # BurnerStartsCounter (vitalk2mqtt read 2 of the 4 bytes: wrapped at 65535)
+    name: Accensioni bruciatore
+    address: 0x088A
+    type: u32
+    update_interval: 60s
+    unit_of_measurement: Accensioni
+    state_class: total_increasing
+    icon: mdi:fire
+  - platform: optolink  # RuntimeHoursBurner (seconds)
+    name: Ore bruciatore
+    address: 0x08A7
+    type: u32
+    divisor: 3600
+    update_interval: 600s
+    unit_of_measurement: h
+    state_class: total_increasing
+    icon: mdi:timer-outline
+  - platform: optolink  # BurnerPowerThrottle
+    id: burner_power
+    name: Potenza bruciatore
+    address: 0xA38F
+    divisor: 2
+    update_interval: 5s
+    unit_of_measurement: "%"
+    state_class: measurement
+    icon: mdi:fire
+  - platform: optolink  # BoilerLowerTemp
+    name: Temperatura acqua calda (Boiler bottom)
+    address: 0x6566
+    type: u16
+    divisor: 10
+    update_interval: 10s
+    <<: *celsius
+  # SolarPumpActive: 0x6552 u8, 30s
+  - platform: optolink  # InternalPumpRPM
+    name: RPM Pompa interna
+    address: 0x0A3C
+    update_interval: 30s
+    unit_of_measurement: "%"
+    state_class: measurement
+    icon: mdi:pump
+  # HeatingRequest: 0x0A80 u8, 60s
+  - platform: optolink  # RuntimeHoursSolar
+    name: Ore solare
+    address: 0x6568
+    type: u16
+    update_interval: 900s
+    unit_of_measurement: h
+    state_class: total_increasing
+    icon: mdi:timer-outline
+  - platform: optolink  # TotalSolarEnergy
+    name: Energia solare totale
+    address: 0x6560
+    type: u32
+    update_interval: 300s
+    unit_of_measurement: kWh
+    device_class: energy
+    state_class: total_increasing
+  # FlowTemp: 0x080C u16 /10, 60s (always 20)
+  # ReturnTemp: 0x080A u16 /10, 60s (always 20)
+  # WaterFlow: 0x0C24 u16, 60s (always 0)
+  - platform: optolink  # HeatingPumpRPM
+    name: RPM Pompa riscaldamento
+    address: 0x7663
+    offset: 1
+    update_interval: 30s
+    unit_of_measurement: "%"
+    state_class: measurement
+    icon: mdi:pump
+  # StartsCounterSolar: 0xCF50 u32, 120s
+  - platform: optolink  # DailySolarEnergy (Wh)
+    name: Energia solare giornaliera
+    address: 0xCF30
+    type: u32
+    divisor: 1000
+    accuracy_decimals: 1
+    update_interval: 300s
+    unit_of_measurement: kWh
+    device_class: energy
+    state_class: total_increasing
+  # RoomTemp: 0x2306 u8, 60s
+  - platform: optolink  # SolarPumpRPM
+    name: RPM Pompa Solare
+    address: 0xCFB0
+    offset: 23
+    update_interval: 15s
+    unit_of_measurement: "%"
+    state_class: measurement
+    icon: mdi:pump
+  # BoilerOutput: 0x0305 u8 /2, 10s (always NaN)
+  # ACSTemp: 0x0814 u16 /10, 20s
+  # ComfortTemp: 0x0812 u16 /10, 20s
+  # Temp9b: 0x779B u8, 300s
+  # ExtCfg: 0x7750 u8, 300s
+
+text_sensor:
+  - platform: optolink  # BoilerLoading
+    id: boiler_loading
+    name: Riscaldamento boiler
+    address: 0x6513
+    update_interval: 5s
+    options: {0: "Off", 1: "Attivo"}
+    # Heating pause after hot water (vitalk2mqtt workaround against burner cycling, ~10 years ago).
+    # Disabled: it wrote the DE1 function, but the thermostats moved to DE3 years ago (d8 = 3) and
+    # nothing cycles; it only wore the EEPROM. To bring it back, uncomment this, de3_function, the
+    # script and the substitution: it now targets DE3 (0x773C).
+    # on_value:  # heating off while the boiler loads hot water, back on after a while (burner cooldown)
+    #   - lambda: |-
+    #       if (x == "Attivo") {
+    #         id(heating_resume).stop();
+    #         if (id(de3_function).state != 0) id(de3_function).make_call().set_value(0).perform();
+    #       } else if (id(de3_function).state == 0 && !id(heating_resume).is_running()) {
+    #         id(heating_resume).execute();
+    #       }
+  - platform: optolink  # SwitchingValvePos
+    name: Posizione valvola deviatrice
+    address: 0x0A10
+    update_interval: 15s
+    options: {1: "Riscaldamento", 2: "Mista", 3: "Acqua calda"}
+  - platform: optolink  # DateTime
+    name: Viessmann Date Time
+    address: 0xA12B
+    type: date
+    update_interval: 60s
+    icon: mdi:clock-outline
+
+number:
+  - platform: optolink  # HotWaterTempTarget
+    name: Target temperatura acqua calda
+    address: 0x6300
+    update_interval: 30s
+    min_value: 20
+    max_value: 50
+    unit_of_measurement: °C
+    icon: mdi:thermometer
+  # - platform: optolink  # DE3 function (was DE1InputFunction 0x773A): 1 = program changeover, 0 = none
+  #   id: de3_function
+  #   name: Funzione ingresso DE3
+  #   internal: true
+  #   address: 0x773C
+  #   update_interval: 300s
+  #   min_value: 0
+  #   max_value: 1
+  - platform: optolink  # CurveOffset
+    name: Curva riscaldamento (Offset)
+    address: 0x27D4
+    update_interval: 300s
+    min_value: 0
+    max_value: 20
+    mode: slider
+    unit_of_measurement: K
+  - platform: optolink  # CurveSlope
+    name: Curva riscaldamento (Slope)
+    address: 0x27D3
+    divisor: 10
+    update_interval: 300s
+    min_value: 0.4
+    max_value: 1.0
+    step: 0.1
+    mode: slider
+    icon: mdi:slope-uphill
+  - <<: *solar_setting  # Solar_dT_On_pump
+    name: dT inserimento solare
+    address: 0xCF00
+    update_interval: 300s
+    min_value: 2
+    max_value: 30
+    unit_of_measurement: ΔK
+    icon: mdi:thermometer
+  - <<: *solar_setting  # Solar_dT_Off_pump
+    name: dT spegnimento solare
+    address: 0xCF01
+    update_interval: 300s
+    min_value: 1
+    max_value: 29
+    unit_of_measurement: ΔK
+    icon: mdi:thermometer
+  - <<: *solar_setting  # Solar_dT_CtrlVarStart
+    name: dT per controllo variabile
+    address: 0xCF03
+    update_interval: 300s
+    min_value: 5
+    max_value: 20
+    unit_of_measurement: ΔK
+    icon: mdi:thermometer
+  - <<: *solar_setting  # Solar_Inc_per_K
+    name: Amplificazione RPM %⁄K  # FRACTION SLASH: ESPHome reserves "/" (HA shows "%/K", registry name)
+    address: 0xCF04
+    update_interval: 300s
+    min_value: 1
+    max_value: 10
+    unit_of_measurement: "%/K"
+  - <<: *solar_setting  # Solar_RPM_Min
+    name: Pompa solare RPM min
+    address: 0xCF05
+    update_interval: 300s
+    min_value: 2
+    max_value: 100
+    unit_of_measurement: "%"
+    icon: mdi:pump
+  - <<: *solar_setting  # Solar_RPM_Max
+    name: Pompa solare RPM max
+    address: 0xCF06
+    update_interval: 300s
+    min_value: 1
+    max_value: 100
+    unit_of_measurement: "%"
+    icon: mdi:pump
+  - <<: *solar_setting  # Solar_T_Min
+    name: Temperatura minima collettore
+    address: 0xCF12
+    update_interval: 300s
+    min_value: 0
+    max_value: 90
+    unit_of_measurement: °C
+    icon: mdi:thermometer
+
+select:
+  - platform: optolink  # ActiveDEInput
+    name: ActiveDEInput
+    address: 0x27D8
+    update_interval: 15s
+    options: {0: "Inibito", 3: "Termostato", 2: "Forzato"}
+
+switch:
+  - platform: optolink  # HotWaterEnabled: off = target 20 °C, on = the target it had
+    name: Acqua calda attiva
+    address: 0x6300
+    update_interval: 30s
+    off_value: 20
+    on_value: 42
+    icon: mdi:water-boiler
+  - platform: optolink  # HotWaterSupEnabled: supplementary hot water target, 0 = off
+    name: Acqua calda supplementare
+    address: 0x6758
+    update_interval: 300s
+    on_value: 60
+    icon: mdi:water-plus
+
+# script:  # heating pause after hot water, disabled (see BoilerLoading)
+#   - id: heating_resume
+#     mode: restart
+#     then:
+#       - delay: ${heating_resume_delay}
+#       - number.set:
+#           id: de3_function
+#           value: 1

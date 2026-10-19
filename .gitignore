@@ -1,0 +1,16 @@
+# Credentials (WiFi, API key, OTA password)
+secrets.yaml
+
+# ESPHome build output and caches
+.esphome/
+*.bin
+__pycache__/
+
+# Firmware dumps (may contain WiFi credentials)
+backup/
+
+# Local notes and the vitalk sources used as protocol reference (upstream: github.com/klauweg/vitalk)
+CLAUDE.md
+PLAN.md
+INTENZIONI.md
+vitalk/

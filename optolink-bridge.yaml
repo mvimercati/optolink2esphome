@@ -1,0 +1,158 @@
+# Viessmann Vitodens 242-F in Home Assistant: the ESP32-S3 talks P300 to the boiler itself.
+#
+# Home Assistant ──API── ESP32-S3 (USB host) ──USB── Optolink adapter (FTDI, 4800 8E2) ──IR── boiler
+#
+# The local component "optolink" polls the datapoints of viessmann.yaml (register table and entities)
+# and writes the settings changed from Home Assistant. Build, flash: README.md. ESPHome >= 2026.10.
+
+substitutions:
+  name: optolink-bridge  # same node as the plain bridge firmware: Home Assistant keeps the device
+  friendly_name: Vitodens 242-F  # HA device name; the ESPHome entry is titled "Caldaia" in HA
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  viessmann: !include viessmann.yaml
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+esp32:
+  board: esp32-s3-devkitc-1  # ESP32-S3 N16R8 devkit: 16 MB flash, 8 MB octal PSRAM
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  hardware_uart: UART0  # the CH340 port; the native USB port (GPIO19/20) is the USB host
+  logs:
+    light: INFO  # the status LED changes every 500 ms while blinking
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    encryption: {}  # same key as the api
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none  # no modem sleep: lower latency, fewer lost packets on weak WiFi
+  ap:  # fallback hotspot if the WiFi is unreachable
+    ssid: ${name}
+    password: !secret fallback_ap_password
+  on_disconnect:
+    - lambda: id(wifi_disconnects) += 1;
+
+globals:
+  - id: wifi_disconnects  # since boot; published once the WiFi is back
+    type: uint32_t
+    initial_value: "0"
+
+captive_portal:
+
+usb_host:
+
+usb_uart:
+  - type: ft232  # FTDI 0403:6001; check the real VID:PID in the logs
+    channels:
+      - id: optolink_uart
+        baud_rate: 4800
+        data_bits: 8
+        parity: EVEN
+        stop_bits: 2
+
+optolink:
+  uart_id: optolink_uart
+  connected:
+    id: boiler_link
+    name: Comunicazione caldaia
+  errors:
+    name: Errori Optolink
+
+# Status LED, faults first: blinking red = no boiler, blinking purple = no Home Assistant. Then
+# burner on: blue loading hot water, orange heating, brighter with more power. Dim green = idle.
+light:
+  - platform: esp32_rmt_led_strip  # the onboard WS2812: GPIO48 (GPIO38 on DevKitC-1 v1.1)
+    id: status_led
+    name: LED stato
+    internal: true
+    pin: GPIO38
+    num_leds: 1
+    chipset: ws2812
+    channel_colors: GRB
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+interval:
+  - interval: 500ms
+    then:
+      - lambda: |-
+          static bool blink = false;
+          static float last[4] = {-1, -1, -1, -1};
+          blink = !blink;
+          float power = id(burner_power).state;  // %, NaN while unknown
+          bool hot_water = id(boiler_loading).state == "Attivo";
+          float c[4];  // r, g, b, brightness
+          auto set = [&](float r, float g, float b, float v) { c[0] = r; c[1] = g; c[2] = b; c[3] = v; };
+          if (!id(boiler_link).state)
+            set(1, 0, 0, blink ? 0.6f : 0);
+          else if (!api::global_api_server->is_connected())
+            set(0.6f, 0, 1, blink ? 0.6f : 0);
+          else if (hot_water || power > 0)
+            set(hot_water ? 0 : 1, hot_water ? 0.3f : 0.35f, hot_water ? 1 : 0,
+                0.15f + 0.45f * (std::isnan(power) ? 0 : power) / 100);
+          else
+            set(0, 1, 0, 0.05f);
+          if (std::equal(c, c + 4, last))
+            return;
+          std::copy(c, c + 4, last);
+          auto call = c[3] > 0 ? id(status_led).turn_on() : id(status_led).turn_off();
+          if (c[3] > 0)
+            call.set_rgb(c[0], c[1], c[2]).set_brightness(c[3]);
+          call.perform();
+
+# Diagnostics
+debug:
+  update_interval: 30s
+
+sensor:
+  - platform: uptime
+    name: Uptime
+  - platform: wifi_signal
+    name: Segnale WiFi
+    update_interval: 60s
+  - platform: debug
+    free:
+      name: Heap libero
+    block:
+      name: Heap blocco max
+  - platform: template
+    name: Disconnessioni WiFi
+    lambda: return id(wifi_disconnects);
+    update_interval: 60s
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: Motivo reset
+  - platform: wifi_info
+    ip_address:
+      name: Indirizzo IP
+
+button:
+  - platform: restart
+    name: Riavvia
