@@ -12,6 +12,8 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  includes:
+    - <esp_pm.h>
 
 packages:
   viessmann: !include viessmann.yaml
@@ -26,6 +28,8 @@ esp32:
   flash_size: 16MB
   framework:
     type: esp-idf
+    sdkconfig_options:
+      CONFIG_PM_ENABLE: y  # esp_pm_configure(): the CPU clock can change at runtime
 
 psram:
   mode: octal
@@ -48,9 +52,6 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   power_save_mode: none  # no modem sleep: lower latency, fewer lost packets on weak WiFi
-  ap:  # fallback hotspot if the WiFi is unreachable
-    ssid: ${name}
-    password: !secret fallback_ap_password
   on_disconnect:
     - lambda: id(wifi_disconnects) += 1;
 
@@ -58,8 +59,6 @@ globals:
   - id: wifi_disconnects  # since boot; published once the WiFi is back
     type: uint32_t
     initial_value: "0"
-
-captive_portal:
 
 usb_host:
 
@@ -129,6 +128,9 @@ debug:
 sensor:
   - platform: uptime
     name: Uptime
+  - platform: internal_temperature
+    name: Temperatura ESP
+    update_interval: 60s
   - platform: wifi_signal
     name: Segnale WiFi
     update_interval: 60s
@@ -156,3 +158,22 @@ text_sensor:
 button:
   - platform: restart
     name: Riavvia
+
+# CPU clock, kept across reboots: a cooler chip at 80/160 MHz (WiFi and USB host still run).
+# Fixed, no frequency scaling: min = max, no light sleep.
+select:
+  - platform: template
+    id: cpu_clock
+    name: Frequenza CPU
+    icon: mdi:speedometer
+    entity_category: config
+    options: ["240 MHz", "160 MHz", "80 MHz"]
+    initial_option: "240 MHz"
+    optimistic: true
+    restore_value: true
+    on_value:  # also at boot, with the restored option
+      - lambda: |-
+          static const int mhz[] = {240, 160, 80};
+          esp_pm_config_t pm = {.max_freq_mhz = mhz[i], .min_freq_mhz = mhz[i], .light_sleep_enable = false};
+          esp_err_t err = esp_pm_configure(&pm);
+          ESP_LOGI("cpu", "Clock %d MHz: %s", mhz[i], esp_err_to_name(err));

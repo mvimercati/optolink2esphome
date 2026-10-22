@@ -163,8 +163,8 @@ class OptolinkSwitch : public switch_::Switch, public Datapoint {
   int32_t on_value_() {  // restored from flash on first use: preferences aren't ready at construction
     if (!this->restored_) {
       this->restored_ = true;
-      // own key: Switch keeps its restore state under get_preference_hash()
-      this->pref_ = global_preferences->make_preference<int32_t>(this->get_preference_hash() ^ 0x6F6E7631);
+      // own key (same as before 2026.10: entity hash ^ version): Switch keeps its state under version 0
+      this->pref_ = this->make_entity_preference<int32_t>(0x6F6E7631);
       this->pref_.load(&this->on_);
     }
     return this->on_;

@@ -21,7 +21,7 @@ work with their own register table.
 
 | File | Content |
 |------|---------|
-| `optolink-bridge.yaml` | board, network, USB host, `optolink` hub, status LED, diagnostics |
+| `optolink-bridge.yaml` | board, network (no fallback hotspot), USB host, `optolink` hub, status LED, CPU clock, diagnostics |
 | `viessmann.yaml` | register table → entities, hot water switches |
 | `components/optolink/` | external component: P300 protocol (`protocol.h`), hub, entity platforms |
 | `tests/test_protocol.cpp` | host test of `protocol.h` |
@@ -71,6 +71,12 @@ g++ -std=c++17 -Wall -Icomponents/optolink tests/test_protocol.cpp -o /tmp/t && 
 
 Blinking red: no boiler link. Blinking purple: no Home Assistant. Burner on: blue while loading hot
 water, orange while heating, brighter with more power. Dim green: idle.
+
+## CPU clock
+
+*Frequenza CPU* (config entity: 240, 160 or 80 MHz, kept across reboots) sets a fixed clock with
+`esp_pm_configure()` (`CONFIG_PM_ENABLE`, no frequency scaling, no light sleep). *Temperatura ESP*
+is the chip's internal sensor.
 
 ## Credits
 
