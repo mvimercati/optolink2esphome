@@ -10,6 +10,8 @@ static const char *const TAG = "optolink";
 static constexpr uint32_t ENQ_TIMEOUT = 5000;  // in KW mode the boiler sends ENQ about every 2 s
 static constexpr uint32_t SETTLE = 500;        // after a failure, before the next request
 static constexpr uint8_t MAX_FAILURES = 3;
+static constexpr uint8_t SILENT = 2;           // ENQ timeouts between link ups: the boiler was off
+static constexpr uint32_t WARMUP = 90000;      // after power on, until the boiler's values are real
 
 static bool reached(uint32_t now, uint32_t t) { return int32_t(now - t) >= 0; }
 
@@ -74,8 +76,11 @@ void Optolink::loop() {
           return;
         }
       }
-      if (now - this->sent_at_ > ENQ_TIMEOUT)
+      if (now - this->sent_at_ > ENQ_TIMEOUT) {
+        if (this->silences_ < SILENT)
+          this->silences_++;
         this->reset_();
+      }
       break;
     case State::WAIT_SYNC:
       while ((byte = this->byte_()) == ENQ) {  // a late ENQ may cross our SYNC
@@ -83,6 +88,12 @@ void Optolink::loop() {
       if (byte == ACK) {
         this->state_ = State::IDLE;
         this->set_connected_(true);
+        if (this->silences_ >= SILENT) {
+          ESP_LOGI(TAG, "The boiler is starting up: values dropped for %" PRIu32 " s", WARMUP / 1000);
+          this->warming_ = true;
+          this->warm_until_ = now + WARMUP;
+        }
+        this->silences_ = 0;
       } else if (byte >= 0 || now - this->sent_at_ > this->timeout_) {
         this->reset_();
       }
@@ -105,6 +116,12 @@ void Optolink::loop() {
 
 // Sends the next write, or reads the most overdue datapoint.
 void Optolink::start_(uint32_t now) {
+  if (this->warming_ && reached(now, this->warm_until_)) {
+    ESP_LOGI(TAG, "Boiler started: reading everything");
+    this->warming_ = false;
+    for (auto *dp : this->points_)
+      dp->next_ = now;
+  }
   size_t len;
   if (!this->writes_.empty()) {
     Write w = this->writes_.front();
@@ -145,7 +162,7 @@ void Optolink::done_(uint32_t now, Reply r) {
   for (auto *dp : this->points_) {
     if (read && dp->address_ >= address && dp->address_ + dp->length() <= address + n) {
       dp->next_ = now + dp->interval_;
-      if (r == OK) {
+      if (r == OK && !this->warming_) {
         const uint8_t *data = this->rx_ + 8 + (dp->address_ - address) + dp->offset_;
         dp->last_ = dp->value(data);
         dp->known_ = true;

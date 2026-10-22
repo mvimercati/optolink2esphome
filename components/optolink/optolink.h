@@ -7,7 +7,9 @@
 // a write the datapoints covering that address are read again. A write of the value last read
 // is skipped (the settings are likely in EEPROM, which wears out). A read serves every
 // datapoint it covers. Three failures in a row (or an ENQ: the boiler fell back to KW) and the
-// link is set up again.
+// link is set up again. A boiler that was silent (off) answers garbage for a while after power
+// on (0 °C outside, 255 from the solar module, counters at 0): what it reads in the first
+// WARMUP is dropped, then everything is read again.
 
 #include <vector>
 
@@ -87,6 +89,9 @@ class Optolink : public Component, public uart::UARTDevice {
   uint8_t failures_{0};  // in a row
   uint32_t errors_{0};   // since boot
   bool connected_{false};
+  uint8_t silences_{0};  // ENQ timeouts since the last link up (the first one at boot: USB not ready)
+  bool warming_{false};  // until warm_until_: the boiler is starting up, replies are dropped
+  uint32_t warm_until_{0};
   binary_sensor::BinarySensor *connected_sensor_{nullptr};
   sensor::Sensor *errors_sensor_{nullptr};
 };

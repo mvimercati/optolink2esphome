@@ -56,7 +56,7 @@ ESPHome ≥ 2026.10 (`usb_host` + `usb_uart`, esp-idf framework), here in Docker
 
 ```sh
 cp secrets.example.yaml secrets.yaml   # fill it in
-IMG=ghcr.io/esphome/esphome:2026.10.0b4
+IMG=ghcr.io/esphome/esphome:2026.10.0
 docker run --rm -v "$PWD":/config $IMG compile optolink-bridge.yaml
 docker run --rm --network host -v "$PWD":/config $IMG run optolink-bridge.yaml --device <ip or serial port>
 ```
