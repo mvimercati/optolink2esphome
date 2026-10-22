@@ -76,7 +76,8 @@ water, orange while heating, brighter with more power. Dim green: idle.
 
 *Frequenza CPU* (config entity: 240, 160 or 80 MHz, kept across reboots) sets a fixed clock with
 `esp_pm_configure()` (`CONFIG_PM_ENABLE`, no frequency scaling, no light sleep). *Temperatura ESP*
-is the chip's internal sensor.
+is the chip's internal sensor. *Carico CPU core 0/1*: 100 % minus the idle task's share, every 10 s
+(FreeRTOS run time stats); core 1 runs the ESPHome loop, core 0 the WiFi. *Tempo loop max*: longest loop.
 
 ## Credits
 

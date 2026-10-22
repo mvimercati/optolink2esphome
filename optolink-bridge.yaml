@@ -30,6 +30,7 @@ esp32:
     type: esp-idf
     sdkconfig_options:
       CONFIG_PM_ENABLE: y  # esp_pm_configure(): the CPU clock can change at runtime
+      CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS: y  # idle time per core: the CPU load sensors
 
 psram:
   mode: octal
@@ -139,6 +140,40 @@ sensor:
       name: Heap libero
     block:
       name: Heap blocco max
+    loop_time:
+      name: Tempo loop max
+  - platform: template  # 100 % - idle task share since the last update (run time stats: esp_timer, µs)
+    id: cpu_load0
+    name: Carico CPU core 0
+    update_interval: 10s
+    lambda: |-
+      static uint32_t idle, last;
+      uint32_t now = esp_timer_get_time(), t = ulTaskGetIdleRunTimeCounterForCore(0);
+      float load = last ? 100 * (1 - float(t - idle) / float(now - last)) : NAN;
+      idle = t;
+      last = now;
+      return load;
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    icon: mdi:cpu-64-bit
+  - platform: template
+    id: cpu_load1
+    name: Carico CPU core 1
+    update_interval: 10s
+    lambda: |-
+      static uint32_t idle, last;
+      uint32_t now = esp_timer_get_time(), t = ulTaskGetIdleRunTimeCounterForCore(1);
+      float load = last ? 100 * (1 - float(t - idle) / float(now - last)) : NAN;
+      idle = t;
+      last = now;
+      return load;
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    icon: mdi:cpu-64-bit
   - platform: template
     name: Disconnessioni WiFi
     lambda: return id(wifi_disconnects);
