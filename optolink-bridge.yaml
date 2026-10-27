@@ -83,20 +83,9 @@ optolink:
 # Status LED, faults first: blinking red = no boiler, blinking purple = no Home Assistant. Then
 # burner on: blue loading hot water, orange heating, brighter with more power. Dim green = idle.
 light:
-  - platform: esp32_rmt_led_strip  # the onboard WS2812: GPIO48 (GPIO38 on DevKitC-1 v1.1)
+  - platform: esp32_rmt_led_strip  # the onboard WS2812 on GPIO48, behind the solder jumper "RGB"
     id: status_led
     name: LED stato
-    internal: true
-    pin: GPIO38
-    num_leds: 1
-    chipset: ws2812
-    channel_colors: GRB
-    default_transition_length: 0s
-    restore_mode: ALWAYS_OFF
-    rmt_symbols: 96
-  - platform: esp32_rmt_led_strip  # LED TEST
-    id: test_led48
-    name: LED test 48
     internal: true
     pin: GPIO48
     num_leds: 1
@@ -104,14 +93,34 @@ light:
     channel_colors: GRB
     default_transition_length: 0s
     restore_mode: ALWAYS_OFF
-    rmt_symbols: 96
 
 interval:
   - interval: 500ms
     then:
-      - lambda: |-  # LED TEST: GPIO38 full red, GPIO48 full blue
-          id(status_led).turn_on().set_rgb(1, 0, 0).set_brightness(1).perform();
-          id(test_led48).turn_on().set_rgb(0, 0, 1).set_brightness(1).perform();
+      - lambda: |-
+          static bool blink = false;
+          static float last[4] = {-1, -1, -1, -1};
+          blink = !blink;
+          float power = id(burner_power).state;  // %, NaN while unknown
+          bool hot_water = id(boiler_loading).state == "Attivo";
+          float c[4];  // r, g, b, brightness
+          auto set = [&](float r, float g, float b, float v) { c[0] = r; c[1] = g; c[2] = b; c[3] = v; };
+          if (!id(boiler_link).state)
+            set(1, 0, 0, blink ? 0.6f : 0);
+          else if (!api::global_api_server->is_connected())
+            set(0.6f, 0, 1, blink ? 0.6f : 0);
+          else if (hot_water || power > 0)
+            set(hot_water ? 0 : 1, hot_water ? 0.3f : 0.35f, hot_water ? 1 : 0,
+                0.15f + 0.45f * (std::isnan(power) ? 0 : power) / 100);
+          else
+            set(0, 1, 0, 0.05f);
+          if (std::equal(c, c + 4, last))
+            return;
+          std::copy(c, c + 4, last);
+          auto call = c[3] > 0 ? id(status_led).turn_on() : id(status_led).turn_off();
+          if (c[3] > 0)
+            call.set_rgb(c[0], c[1], c[2]).set_brightness(c[3]);
+          call.perform();
 
 # Diagnostics
 debug:
